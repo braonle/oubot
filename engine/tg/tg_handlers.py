@@ -25,6 +25,23 @@ INLINE_MSG_KEY = "inline_msg"
 HOURS_SPENT_KEY = "hours"
 
 
+def replay_message(chat_id: int, context: CallbackContext, log_msg: str, prompt: str, keyboard: InlineKeyboardMarkup):
+    # Message in chat for user prompts and inline keyboard
+    inline_msg_id = context.user_data.pop(INLINE_MSG_KEY)
+    # Message in chat that invoked conversation
+    initial_msg_id = context.user_data[INITIAL_MSG_KEY]
+    # Cleanup keyboard (otherwise it is should as reply for deleted message)
+    context.bot.edit_message_reply_markup(chat_id=chat_id, message_id=inline_msg_id, reply_markup=None)
+    context.bot.delete_message(chat_id, inline_msg_id)
+    context.bot.send_message(chat_id=chat_id, text=log_msg)
+
+    # Command requested directly, new conversation
+    msg = context.bot.send_message(chat_id=chat_id, text=prompt, reply_to_message_id=initial_msg_id,
+                                   reply_markup=keyboard)
+    # Message in chat for user prompts and inline keyboard
+    context.user_data[INLINE_MSG_KEY] = msg.message_id
+
+
 def default_keyboard() -> InlineKeyboardMarkup:
     """ Keyboard with 2 buttons: main menu and exit
 
@@ -82,7 +99,11 @@ def start(update: Update, context: CallbackContext) -> str:
     else:
         # Command requested via button thus via callback
         update.callback_query.answer()
-        update.callback_query.edit_message_text(text=msgs.PROMPT_INITIAL_MENU, reply_markup=reply_markup)
+        # If message is not actually changed and stays the same, BadRequest is thrown
+        try:
+            update.callback_query.edit_message_text(text=msgs.PROMPT_INITIAL_MENU, reply_markup=reply_markup)
+        except BadRequest:
+            pass
 
     return STATE_SELECTION
 
@@ -238,8 +259,9 @@ def add_balance_inline_deposit(update: Update, context: CallbackContext) -> str:
         return STATE_ADD_BALANCE
 
     context.bot.delete_message(update.effective_chat.id, update.effective_message.message_id)
-    context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=__add_balance(chat_id, deposit),
-                                  reply_markup=default_keyboard())
+    prompt = __add_balance(chat_id, deposit)
+    replay_message(chat_id, context, prompt, prompt, default_keyboard())
+
     return STATE_SELECTION
 
 
@@ -377,8 +399,9 @@ def use_balance_inline_rent(update: Update, context: CallbackContext) -> str:
     context.bot.delete_message(update.effective_chat.id, update.effective_message.message_id)
     # Get hours spent from cache
     hours = context.user_data.pop(HOURS_SPENT_KEY)
-    context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=__use_balance(chat_id, hours, rent),
-                                  reply_markup=default_keyboard())
+    prompt = __use_balance(chat_id, hours, rent)
+    replay_message(chat_id, context, prompt, prompt, default_keyboard())
+
     return STATE_USE_BALANCE_RENT
 
 
