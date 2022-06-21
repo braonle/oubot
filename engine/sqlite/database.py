@@ -1,5 +1,3 @@
-from enum import IntEnum
-from typing import List
 from peewee import SqliteDatabase, Model, IntegerField
 from ..global_params import DB_NAME
 
