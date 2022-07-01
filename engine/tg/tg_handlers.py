@@ -54,11 +54,11 @@ def replay_message(chat_id: int, context: CallbackContext, log_msg: str, prompt:
     context.bot.edit_message_reply_markup(chat_id=chat_id, message_id=inline_msg_id, reply_markup=None)
     context.bot.delete_message(chat_id, inline_msg_id)
     msg = context.bot.send_message(chat_id=chat_id, text=log_msg)
-    context.bot.pin_chat_message(chat_id=chat_id, message_id=msg.message_id)
+    context.bot.pin_chat_message(chat_id=chat_id, message_id=msg.message_id, disable_notification=True)
 
     # Command requested directly, new conversation
     msg = context.bot.send_message(chat_id=chat_id, text=prompt, reply_to_message_id=initial_msg_id,
-                                   reply_markup=keyboard)
+                                   reply_markup=keyboard, disable_notification=True)
     # Message in chat for user prompts and inline keyboard
     context.user_data[INLINE_MSG_KEY] = msg.message_id
 
@@ -112,7 +112,7 @@ def start(update: Update, context: CallbackContext) -> str:
 
     if update.message is not None:
         # Command requested directly, new conversation
-        msg = update.message.reply_text(text=msgs.PROMPT_INITIAL_MENU, reply_markup=reply_markup)
+        msg = update.message.reply_text(text=msgs.PROMPT_INITIAL_MENU, reply_markup=reply_markup, disable_notification=True)
         # Message in chat that invoked conversation
         context.user_data[INITIAL_MSG_KEY] = update.message.message_id
         # Message in chat for user prompts and inline keyboard
