@@ -1,3 +1,5 @@
+from typing import List
+
 from peewee import SqliteDatabase, Model, IntegerField
 from ..global_params import DB_NAME
 
@@ -56,3 +58,7 @@ def set_hour_fee(chat_id: int, hour_fee: int) -> None:
     entity = TgGroupParams.get(TgGroupParams.chat_id == chat_id)
     entity.hour_fee = hour_fee
     entity.save()
+
+
+def get_groups() -> List[int]:
+    return [x.chat_id for x in TgGroupParams.select()]

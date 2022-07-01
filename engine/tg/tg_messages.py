@@ -10,6 +10,9 @@ TG_HELP = \
 /%s <RUB> - стоимость занятия за час
 """
 
+BOT_START = "Бот запущен"
+BOT_STOP = "Бот остановлен"
+
 TG_UNKNOWN = "Команда не зарегистрирована"
 TG_GET_BALANCE = "Доступно {balance} RUB"
 TG_ADD_BALANCE = "Добавлено {deposit} RUB, доступно {balance} RUB"

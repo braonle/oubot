@@ -1,4 +1,4 @@
-from telegram.error import BadRequest
+from typing import Union, List, Tuple
 
 import engine.tg.tg_messages as msgs
 import engine.sqlite.database as db
@@ -6,7 +6,9 @@ import engine.sqlite.database as db
 from engine import global_params
 from telegram import Update, ChatMember, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import CallbackContext, Updater, CommandHandler, Filters, MessageHandler, ConversationHandler, \
-    CallbackQueryHandler
+    CallbackQueryHandler, Dispatcher
+from telegram.error import BadRequest
+from telegram.utils.helpers import get_signal_name
 
 """Consts for state selection within ConversationHandler"""
 (
@@ -25,6 +27,24 @@ INLINE_MSG_KEY = "inline_msg"
 HOURS_SPENT_KEY = "hours"
 
 
+def inform_all_chats(updater: Dispatcher, msg: str) -> None:
+    # Get all chats available
+    chat_ids = db.get_groups()
+    for chat_id in chat_ids:
+        try:
+            # Inform users of bot activity without notification
+            updater.bot.send_message(chat_id=chat_id, text=msg, disable_notification=True)
+        except BadRequest as e:
+            # Chat might have been changed due to admin rights assignment, ignore such chats
+            print(f'{chat_id} is not valid, reason: {e.message}')
+
+
+class CustomUpdater(Updater):
+    def _signal_handler(self, signum, frame) -> None:
+        inform_all_chats(self.dispatcher, msgs.BOT_STOP)
+        super()._signal_handler(signum, frame)
+
+
 def replay_message(chat_id: int, context: CallbackContext, log_msg: str, prompt: str, keyboard: InlineKeyboardMarkup):
     # Message in chat for user prompts and inline keyboard
     inline_msg_id = context.user_data.pop(INLINE_MSG_KEY)
@@ -33,7 +53,8 @@ def replay_message(chat_id: int, context: CallbackContext, log_msg: str, prompt:
     # Cleanup keyboard (otherwise it is should as reply for deleted message)
     context.bot.edit_message_reply_markup(chat_id=chat_id, message_id=inline_msg_id, reply_markup=None)
     context.bot.delete_message(chat_id, inline_msg_id)
-    context.bot.send_message(chat_id=chat_id, text=log_msg)
+    msg = context.bot.send_message(chat_id=chat_id, text=log_msg)
+    context.bot.pin_chat_message(chat_id=chat_id, message_id=msg.message_id)
 
     # Command requested directly, new conversation
     msg = context.bot.send_message(chat_id=chat_id, text=prompt, reply_to_message_id=initial_msg_id,
@@ -275,7 +296,7 @@ def __use_balance(chat_id: int, time: float, rent: int) -> str:
     :return: string with amount spent and available as a result
     """
     hour_fee = db.get_hour_fee(chat_id)
-    spent = int((hour_fee + rent) * time)
+    spent = int(hour_fee * time) + rent
     balance = db.use_balance(chat_id, spent)
     return msgs.TG_USE_BALANCE.format(spent=spent, balance=balance)
 
@@ -573,7 +594,7 @@ def start_bot() -> None:
 
     :return: null
     """
-    updater = Updater(token=global_params.TOKEN, use_context=True)
+    updater = CustomUpdater(token=global_params.TOKEN, use_context=True)
 
     # Main menu handlers
     selection_handlers = [
@@ -641,6 +662,8 @@ def start_bot() -> None:
     # Unknown direct command handlers
     unknown_handler = MessageHandler(Filters.command, unknown_cmd)
     updater.dispatcher.add_handler(unknown_handler)
+
+    inform_all_chats(updater.dispatcher, msgs.BOT_START)
 
     updater.start_polling(poll_interval=global_params.POLL_INTERVAL)
     updater.idle()
