@@ -663,10 +663,11 @@ def start_bot() -> None:
     unknown_handler = MessageHandler(Filters.command, unknown_cmd)
     updater.dispatcher.add_handler(unknown_handler)
 
+    # updater.start_polling(poll_interval=global_params.POLL_INTERVAL)
+    updater.start_webhook(listen=global_params.LISTEN_IP, port=global_params.PORT, url_path=global_params.TOKEN,
+                          key=global_params.PRIVATE_KEY, cert=global_params.CERTIFICATE,
+                          webhook_url=f'https://{global_params.PUBLIC_IP}:{global_params.PORT}/{global_params.TOKEN}')
+
     inform_all_chats(updater.dispatcher, msgs.BOT_START)
 
-    # updater.start_polling(poll_interval=global_params.POLL_INTERVAL)
-    updater.start_webhook(listen=global_params.IP, port=global_params.PORT, url_path=global_params.TOKEN,
-                          key=global_params.PRIVATE_KEY, cert=global_params.CERTIFICATE,
-                          webhook_url=f'https://{global_params.IP}:{global_params.PORT}/{global_params.TOKEN}')
     updater.idle()
