@@ -7,7 +7,8 @@ MAINT_ID = <ID of maintenance chat>
 DB_NAME = "engine/sqlite/oubot.sqlite3"
 
 # Webhook params
-IP = <public IP>
+PUBLIC_IP = <public IP>
+LISTEN_IP = <private IP>
 PORT = <TCP port>
 PRIVATE_KEY = <path to certificate private key>
 CERIFICATE = <path to certificate>
