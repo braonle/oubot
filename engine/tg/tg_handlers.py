@@ -8,7 +8,7 @@ from telegram import Update, ChatMember, InlineKeyboardMarkup, InlineKeyboardBut
 from telegram.ext import CallbackContext, Updater, CommandHandler, Filters, MessageHandler, ConversationHandler, \
     CallbackQueryHandler, Dispatcher
 from telegram.error import BadRequest
-from multiprocessing import Queue
+from threading import Event
 from signal import SIGABRT, SIGINT, SIGTERM, signal
 
 """Consts for state selection within ConversationHandler"""
@@ -41,22 +41,22 @@ def inform_all_chats(updater: Dispatcher, msg: str) -> None:
 
 
 class CustomUpdater(Updater):
-    queue: Queue
+    event: Event
 
     def idle(self, stop_signals: Union[List, Tuple] = (SIGINT, SIGTERM, SIGABRT)) -> None:
 
-        self.queue = Queue()
+        self.event = Event()
 
         for sig in stop_signals:
             signal(sig, self._signal_handler)
 
-        self.queue.get()
+        self.event.wait()
 
     def _signal_handler(self, signum, frame) -> None:
         if not global_params.DEBUG:
             inform_all_chats(self.dispatcher, msgs.BOT_STOP)
         super()._signal_handler(signum, frame)
-        self.queue.put(True)
+        self.event.set()
 
 
 def replay_message(chat_id: int, context: CallbackContext, log_msg: str, prompt: str, keyboard: InlineKeyboardMarkup):
