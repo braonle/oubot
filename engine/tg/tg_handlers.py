@@ -8,7 +8,8 @@ from telegram import Update, ChatMember, InlineKeyboardMarkup, InlineKeyboardBut
 from telegram.ext import CallbackContext, Updater, CommandHandler, Filters, MessageHandler, ConversationHandler, \
     CallbackQueryHandler, Dispatcher
 from telegram.error import BadRequest
-from telegram.utils.helpers import get_signal_name
+from multiprocessing import Queue
+from signal import SIGABRT, SIGINT, SIGTERM, signal
 
 """Consts for state selection within ConversationHandler"""
 (
@@ -40,9 +41,22 @@ def inform_all_chats(updater: Dispatcher, msg: str) -> None:
 
 
 class CustomUpdater(Updater):
+    queue: Queue
+
+    def idle(self, stop_signals: Union[List, Tuple] = (SIGINT, SIGTERM, SIGABRT)) -> None:
+
+        self.queue = Queue()
+
+        for sig in stop_signals:
+            signal(sig, self._signal_handler)
+
+        self.queue.get()
+
     def _signal_handler(self, signum, frame) -> None:
-        inform_all_chats(self.dispatcher, msgs.BOT_STOP)
+        if not global_params.DEBUG:
+            inform_all_chats(self.dispatcher, msgs.BOT_STOP)
         super()._signal_handler(signum, frame)
+        self.queue.put(True)
 
 
 def replay_message(chat_id: int, context: CallbackContext, log_msg: str, prompt: str, keyboard: InlineKeyboardMarkup):
@@ -663,11 +677,14 @@ def start_bot() -> None:
     unknown_handler = MessageHandler(Filters.command, unknown_cmd)
     updater.dispatcher.add_handler(unknown_handler)
 
-    # updater.start_polling(poll_interval=global_params.POLL_INTERVAL)
-    updater.start_webhook(listen=global_params.LISTEN_IP, port=global_params.PORT, url_path=global_params.TOKEN,
+    if global_params.POLLING_BASED:
+        updater.start_polling(poll_interval=global_params.POLL_INTERVAL)
+    else:
+        updater.start_webhook(listen=global_params.LISTEN_IP, port=global_params.PORT, url_path=global_params.TOKEN,
                           key=global_params.PRIVATE_KEY, cert=global_params.CERTIFICATE,
                           webhook_url=f'https://{global_params.PUBLIC_IP}:{global_params.PORT}/{global_params.TOKEN}')
 
-    inform_all_chats(updater.dispatcher, msgs.BOT_START)
+    if not global_params.DEBUG:
+        inform_all_chats(updater.dispatcher, msgs.BOT_START)
 
     updater.idle()
