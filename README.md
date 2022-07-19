@@ -67,7 +67,7 @@ The process consists of 2 parts: bot code deployment and Telegram deployment
 Initially no group is allowed to utilize the bot. Maintenance chat is used to authorize new groups via chat ID.
 1. Call /help command in the group (other commands are ignored)
 2. Bot will report a new group in maintenance chat
-3. Call /authz_group <chat_id> in maintenance chat
+3. Authorize the new chat via inline keyboard
 4. Group is now authorized and all commands are available. Call /start for button menu or issue commands directly
 
 # Commands

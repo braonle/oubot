@@ -1,8 +1,8 @@
 from typing import List
-
-from peewee import SqliteDatabase, Model, IntegerField
+from peewee import SqliteDatabase, Model, IntegerField, IntegrityError
 from ..global_params import DB_NAME
 
+import logging
 
 class BaseModel(Model):
     class Meta:
@@ -19,13 +19,14 @@ class TgGroupParams(BaseModel):
     hour_fee = IntegerField()
 
 
-def add_group(chat_id: int) -> None:
-    """
-    Raises:
-        IntegrityError: group already exists
-    """
-    TgGroupParams.create(chat_id=chat_id)
-    TgGroupBalance.create(chat_id=chat_id)
+def add_group(chat_id: int) -> bool:
+    try:
+        TgGroupParams.create(chat_id=chat_id)
+        TgGroupBalance.create(chat_id=chat_id)
+        return True
+    except IntegrityError as e:
+        logging.warning(f"Adding a new chat failed: {e}")
+        return False
 
 
 def group_exists(chat_id: int) -> bool:

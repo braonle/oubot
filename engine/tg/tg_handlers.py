@@ -2,6 +2,7 @@ from typing import Union, List, Tuple
 
 import engine.tg.tg_messages as msgs
 import engine.sqlite.database as db
+import logging
 
 from engine import global_params
 from telegram import Update, ChatMember, InlineKeyboardMarkup, InlineKeyboardButton
@@ -40,7 +41,7 @@ def inform_all_chats(updater: Dispatcher, msg: str) -> None:
             updater.bot.send_message(chat_id=chat_id, text=msg, disable_notification=True)
         except BadRequest as e:
             # Chat might have been changed due to admin rights assignment, ignore such chats
-            print(f'{chat_id} is not valid, reason: {e.message}')
+            logging.warn(f'{chat_id} is not valid, reason: {e.message}')
 
 
 class CustomUpdater(Updater):
@@ -493,8 +494,8 @@ def authz_group(update: Update, context: CallbackContext) -> None:
         context.bot.send_message(chat_id=chat_id, text=response)
         return
 
-    db.add_group(group_id)
-    context.bot.send_message(chat_id=group_id, text=msgs.TG_AUTHZ_COMPLETE)
+    if db.add_group(group_id):
+        context.bot.send_message(chat_id=group_id, text=msgs.TG_AUTHZ_COMPLETE)
 
 
 def authz_group_inline(update: Update, context: CallbackContext) -> None:
