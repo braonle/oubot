@@ -70,12 +70,6 @@ Initially no group is allowed to utilize the bot. Maintenance chat is used to au
 3. Call /authz_group <chat_id> in maintenance chat
 4. Group is now authorized and all commands are available. Call /start for button menu or issue commands directly
 
-## Caveats
-1. If using inline keyboard, only a single instance per chat is allowed at a time. Invoking several 
-keyboards in a single chat might result in session data corruption and loss of data input.
-1. Creating a new keyboard does not render the previous one inactive. Thus it is recommended to finish 
-conversation as soon as keyboard is not needed.
-
 # Commands
 All commands are available directly, although using inline button keyboard is recommended
 * **/start**: invoke inline keyboard menu

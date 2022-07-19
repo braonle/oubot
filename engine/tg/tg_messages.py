@@ -23,6 +23,7 @@ TG_UNAUTHZ_GROUP = 'Неавторизованная группа "{name}"'
 TG_AUTHZ_COMPLETE = "Группа авторизована"
 TG_NOT_ALLOWED = "Команда разрешена только администратору"
 TG_HOUR_FEE_SET = "Оплата за час установлена как {sum} RUB"
+TG_KEYBOARD_ACTIVE = "Другая клавиатура всё ещё активна"
 
 BUTTON_START = "В начало"
 BUTTON_BALANCE = "Остаток"

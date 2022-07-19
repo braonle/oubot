@@ -62,11 +62,11 @@ class CustomUpdater(Updater):
         self.event.set()
 
 
-def replay_message(chat_id: int, context: CallbackContext, log_msg: str, prompt: str, keyboard: InlineKeyboardMarkup):
+def replay_message(chat_id: int, user_id: int, context: CallbackContext, log_msg: str, prompt: str, keyboard: InlineKeyboardMarkup):
     # Message in chat for user prompts and inline keyboard
-    inline_msg_id = context.chat_data.pop(INLINE_MSG_KEY)
+    inline_msg_id = context.chat_data[user_id].pop(INLINE_MSG_KEY)
     # Message in chat that invoked conversation
-    initial_msg_id = context.chat_data[INITIAL_MSG_KEY]
+    initial_msg_id = context.chat_data[user_id][INITIAL_MSG_KEY]
     # Cleanup keyboard (otherwise it is should as reply for deleted message)
     context.bot.edit_message_reply_markup(chat_id=chat_id, message_id=inline_msg_id, reply_markup=None)
     context.bot.delete_message(chat_id, inline_msg_id)
@@ -77,7 +77,7 @@ def replay_message(chat_id: int, context: CallbackContext, log_msg: str, prompt:
     msg = context.bot.send_message(chat_id=chat_id, text=prompt, reply_to_message_id=initial_msg_id,
                                    reply_markup=keyboard, disable_notification=True)
     # Message in chat for user prompts and inline keyboard
-    context.chat_data[INLINE_MSG_KEY] = msg.message_id
+    context.chat_data[user_id][INLINE_MSG_KEY] = msg.message_id
 
 
 def default_keyboard() -> InlineKeyboardMarkup:
@@ -99,6 +99,7 @@ def start(update: Update, context: CallbackContext) -> str:
     :return: ConversationHandler state equal to action selection
     """
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
 
     # If chat is not authorized (does not exist in DB) - delete message (only help is allowed)
     if not db.group_exists(chat_id):
@@ -131,13 +132,18 @@ def start(update: Update, context: CallbackContext) -> str:
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    if update.message is not None:
+    if update.callback_query is None:
         # Command requested directly, new conversation
-        msg = update.message.reply_text(text=msgs.PROMPT_INITIAL_MENU, reply_markup=reply_markup, disable_notification=True)
-        # Message in chat that invoked conversation
-        context.chat_data[INITIAL_MSG_KEY] = update.message.message_id
-        # Message in chat for user prompts and inline keyboard
-        context.chat_data[INLINE_MSG_KEY] = msg.message_id
+        if user_id in context.chat_data:
+            reply_to = context.chat_data[user_id][INLINE_MSG_KEY]
+            context.bot.send_message(chat_id=chat_id, text=msgs.TG_KEYBOARD_ACTIVE, reply_to_message_id=reply_to)
+        else:
+            msg = update.message.reply_text(text=msgs.PROMPT_INITIAL_MENU, reply_markup=reply_markup, disable_notification=True)
+            context.chat_data[user_id] = {}
+            # Message in chat that invoked conversation
+            context.chat_data[user_id][INITIAL_MSG_KEY] = update.message.message_id
+            # Message in chat for user prompts and inline keyboard
+            context.chat_data[user_id][INLINE_MSG_KEY] = msg.message_id
     else:
         # Command requested via button thus via callback
         update.callback_query.answer()
@@ -288,7 +294,8 @@ def add_balance_inline_deposit(update: Update, context: CallbackContext) -> str:
     """
 
     chat_id = update.effective_chat.id
-    message_id = context.chat_data[INLINE_MSG_KEY]
+    user_id = update.effective_user.id
+    message_id = context.chat_data[user_id][INLINE_MSG_KEY]
 
     # Test if the value is integer; if not, notify user inline and delete invalid message
     try:
@@ -306,7 +313,7 @@ def add_balance_inline_deposit(update: Update, context: CallbackContext) -> str:
 
     context.bot.delete_message(update.effective_chat.id, update.effective_message.message_id)
     prompt = __add_balance(chat_id, deposit)
-    replay_message(chat_id, context, prompt, prompt, default_keyboard())
+    replay_message(chat_id, user_id, context, prompt, prompt, default_keyboard())
 
     return STATE_SELECTION
 
@@ -389,8 +396,9 @@ def use_balance_inline_hours(update: Update, context: CallbackContext) -> str:
     :return: ConversationHandler state equal to time spent input (if error) or rent fee input (if success)
     """
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
     # Message in chat for user prompts and inline keyboard
-    message_id = context.chat_data[INLINE_MSG_KEY]
+    message_id = context.chat_data[user_id][INLINE_MSG_KEY]
 
     # Test if the value is float; if not, notify user inline and delete invalid message
     try:
@@ -408,7 +416,7 @@ def use_balance_inline_hours(update: Update, context: CallbackContext) -> str:
 
     context.bot.delete_message(update.effective_chat.id, update.effective_message.message_id)
     # Save hours spent in cache
-    context.chat_data[HOURS_SPENT_KEY] = hours
+    context.chat_data[user_id][HOURS_SPENT_KEY] = hours
     context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=msgs.PROMPT_RENT_SPENT,
                                   reply_markup=default_keyboard())
     return STATE_USE_BALANCE_RENT
@@ -425,8 +433,9 @@ def use_balance_inline_rent(update: Update, context: CallbackContext) -> str:
     :return: ConversationHandler state equal to rent fee input (if error) or action selection (if success)
     """
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
     # Message in chat for user prompts and inline keyboard
-    message_id = context.chat_data[INLINE_MSG_KEY]
+    message_id = context.chat_data[user_id][INLINE_MSG_KEY]
 
     # Test if the value is integer; if not, notify user inline and delete invalid message
     try:
@@ -444,9 +453,9 @@ def use_balance_inline_rent(update: Update, context: CallbackContext) -> str:
 
     context.bot.delete_message(update.effective_chat.id, update.effective_message.message_id)
     # Get hours spent from cache
-    hours = context.chat_data.pop(HOURS_SPENT_KEY)
+    hours = context.chat_data[user_id].pop(HOURS_SPENT_KEY)
     prompt = __use_balance(chat_id, hours, rent)
-    replay_message(chat_id, context, prompt, prompt, default_keyboard())
+    replay_message(chat_id, user_id, context, prompt, prompt, default_keyboard())
 
     return STATE_USE_BALANCE_RENT
 
@@ -585,8 +594,9 @@ def set_hour_fee_inline_value(update: Update, context: CallbackContext) -> str:
     :return: ConversationHandler state equal to hour fee input (if error) or action selection (if success)
     """
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
     # Message in chat for user prompts and inline keyboard
-    message_id = context.chat_data[INLINE_MSG_KEY]
+    message_id = context.chat_data[user_id][INLINE_MSG_KEY]
 
     # Test if the value is integer; if not, notify user inline and delete invalid message
     try:
@@ -615,11 +625,13 @@ def finish_conversation(update: Update, context: CallbackContext) -> str:
     :return: ConversationHandler state equal to end
     """
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
     # Message in chat for user prompts and inline keyboard
-    inline_msg_id = context.chat_data.pop(INLINE_MSG_KEY)
+    inline_msg_id = context.chat_data[user_id].pop(INLINE_MSG_KEY)
     # Message in chat that invoked conversation
-    initial_msg_id = context.chat_data.pop(INITIAL_MSG_KEY)
+    initial_msg_id = context.chat_data[user_id].pop(INITIAL_MSG_KEY)
     # Cleanup keyboard (otherwise it is should as reply for deleted message)
+    context.chat_data.pop(user_id)
     context.bot.edit_message_reply_markup(chat_id=chat_id, message_id=inline_msg_id, reply_markup=None)
     context.bot.delete_message(update.effective_chat.id, inline_msg_id)
     context.bot.delete_message(chat_id=chat_id, message_id=initial_msg_id)
