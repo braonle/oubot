@@ -18,14 +18,17 @@ from signal import SIGABRT, SIGINT, SIGTERM, signal
     STATE_USE_BALANCE_HOURS,
     STATE_USE_BALANCE_RENT,
     STATE_SET_HOUR_FEE,
+    STATE_AUTHZ_GROUP,
     STATE_FINISH
-) = map(chr, range(0, 6))
+) = map(chr, range(0, 7))
 STATE_END = ConversationHandler.END
 
 """Consts for session cache access"""
 INITIAL_MSG_KEY = "initial_msg"
 INLINE_MSG_KEY = "inline_msg"
 HOURS_SPENT_KEY = "hours"
+
+CALLBACK_DELIMITER = '#'
 
 
 def inform_all_chats(updater: Dispatcher, msg: str) -> None:
@@ -61,9 +64,9 @@ class CustomUpdater(Updater):
 
 def replay_message(chat_id: int, context: CallbackContext, log_msg: str, prompt: str, keyboard: InlineKeyboardMarkup):
     # Message in chat for user prompts and inline keyboard
-    inline_msg_id = context.user_data.pop(INLINE_MSG_KEY)
+    inline_msg_id = context.chat_data.pop(INLINE_MSG_KEY)
     # Message in chat that invoked conversation
-    initial_msg_id = context.user_data[INITIAL_MSG_KEY]
+    initial_msg_id = context.chat_data[INITIAL_MSG_KEY]
     # Cleanup keyboard (otherwise it is should as reply for deleted message)
     context.bot.edit_message_reply_markup(chat_id=chat_id, message_id=inline_msg_id, reply_markup=None)
     context.bot.delete_message(chat_id, inline_msg_id)
@@ -74,7 +77,7 @@ def replay_message(chat_id: int, context: CallbackContext, log_msg: str, prompt:
     msg = context.bot.send_message(chat_id=chat_id, text=prompt, reply_to_message_id=initial_msg_id,
                                    reply_markup=keyboard, disable_notification=True)
     # Message in chat for user prompts and inline keyboard
-    context.user_data[INLINE_MSG_KEY] = msg.message_id
+    context.chat_data[INLINE_MSG_KEY] = msg.message_id
 
 
 def default_keyboard() -> InlineKeyboardMarkup:
@@ -99,7 +102,11 @@ def start(update: Update, context: CallbackContext) -> str:
 
     # If chat is not authorized (does not exist in DB) - delete message (only help is allowed)
     if not db.group_exists(chat_id):
-        context.bot.delete_message(chat_id=chat_id, message_id=update.effective_message.message_id)
+        # If no admin privileges assigned - ignore the message without delete
+        try:
+            context.bot.delete_message(chat_id=chat_id, message_id=update.effective_message.message_id)
+        except BadRequest:
+            pass
         return STATE_SELECTION
 
     # Main menu keyboard buttons
@@ -128,9 +135,9 @@ def start(update: Update, context: CallbackContext) -> str:
         # Command requested directly, new conversation
         msg = update.message.reply_text(text=msgs.PROMPT_INITIAL_MENU, reply_markup=reply_markup, disable_notification=True)
         # Message in chat that invoked conversation
-        context.user_data[INITIAL_MSG_KEY] = update.message.message_id
+        context.chat_data[INITIAL_MSG_KEY] = update.message.message_id
         # Message in chat for user prompts and inline keyboard
-        context.user_data[INLINE_MSG_KEY] = msg.message_id
+        context.chat_data[INLINE_MSG_KEY] = msg.message_id
     else:
         # Command requested via button thus via callback
         update.callback_query.answer()
@@ -146,11 +153,15 @@ def start(update: Update, context: CallbackContext) -> str:
 def help(update: Update, context: CallbackContext) -> None:
     chat_id = update.effective_chat.id
 
-    # Notify maintenance about a new chat to be authorized (chat_id added to DB for further processing)
+    # Provide click-to-authorize button in maintenance chat
     if not db.group_exists(chat_id):
-        response = msgs.TG_UNAUTHZ_GROUP.format(name=update.effective_chat.title, chat_id=update.effective_chat.id)
-        context.bot.send_message(chat_id=global_params.MAINT_ID, text=response)
-        context.bot.send_message(chat_id=global_params.MAINT_ID, text=update.effective_chat.id)
+        response = msgs.TG_UNAUTHZ_GROUP.format(name=update.effective_chat.title)
+        callback_data = f"{authz_group_inline.__name__}{CALLBACK_DELIMITER}{update.effective_chat.id}" \
+                        f"{CALLBACK_DELIMITER}{update.effective_chat.title}"
+        keyboard = [[InlineKeyboardButton(msgs.BUTTON_AUTHZ,
+                                          callback_data=callback_data)]]
+        markup = InlineKeyboardMarkup(keyboard)
+        context.bot.send_message(chat_id=global_params.MAINT_ID, text=response, reply_markup=markup)
 
     context.bot.send_message(chat_id=update.effective_chat.id, text=msgs.TG_HELP)
 
@@ -277,7 +288,7 @@ def add_balance_inline_deposit(update: Update, context: CallbackContext) -> str:
     """
 
     chat_id = update.effective_chat.id
-    message_id = context.user_data[INLINE_MSG_KEY]
+    message_id = context.chat_data[INLINE_MSG_KEY]
 
     # Test if the value is integer; if not, notify user inline and delete invalid message
     try:
@@ -379,7 +390,7 @@ def use_balance_inline_hours(update: Update, context: CallbackContext) -> str:
     """
     chat_id = update.effective_chat.id
     # Message in chat for user prompts and inline keyboard
-    message_id = context.user_data[INLINE_MSG_KEY]
+    message_id = context.chat_data[INLINE_MSG_KEY]
 
     # Test if the value is float; if not, notify user inline and delete invalid message
     try:
@@ -397,7 +408,7 @@ def use_balance_inline_hours(update: Update, context: CallbackContext) -> str:
 
     context.bot.delete_message(update.effective_chat.id, update.effective_message.message_id)
     # Save hours spent in cache
-    context.user_data[HOURS_SPENT_KEY] = hours
+    context.chat_data[HOURS_SPENT_KEY] = hours
     context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=msgs.PROMPT_RENT_SPENT,
                                   reply_markup=default_keyboard())
     return STATE_USE_BALANCE_RENT
@@ -415,7 +426,7 @@ def use_balance_inline_rent(update: Update, context: CallbackContext) -> str:
     """
     chat_id = update.effective_chat.id
     # Message in chat for user prompts and inline keyboard
-    message_id = context.user_data[INLINE_MSG_KEY]
+    message_id = context.chat_data[INLINE_MSG_KEY]
 
     # Test if the value is integer; if not, notify user inline and delete invalid message
     try:
@@ -433,7 +444,7 @@ def use_balance_inline_rent(update: Update, context: CallbackContext) -> str:
 
     context.bot.delete_message(update.effective_chat.id, update.effective_message.message_id)
     # Get hours spent from cache
-    hours = context.user_data.pop(HOURS_SPENT_KEY)
+    hours = context.chat_data.pop(HOURS_SPENT_KEY)
     prompt = __use_balance(chat_id, hours, rent)
     replay_message(chat_id, context, prompt, prompt, default_keyboard())
 
@@ -475,6 +486,18 @@ def authz_group(update: Update, context: CallbackContext) -> None:
 
     db.add_group(group_id)
     context.bot.send_message(chat_id=group_id, text=msgs.TG_AUTHZ_COMPLETE)
+
+
+def authz_group_inline(update: Update, context: CallbackContext) -> None:
+    """ Provides click-to-authorize button in maintenance chat
+
+    :param update: message info (prototype required by telegram-bot)
+    :param context: session info (prototype required by telegram-bot)
+    """
+    cmd, group_id, group_name = update.callback_query.data.split(CALLBACK_DELIMITER)
+    db.add_group(group_id)
+    context.bot.send_message(chat_id=group_id, text=msgs.TG_AUTHZ_COMPLETE)
+    update.callback_query.edit_message_text(text=msgs.PROMPT_AUTHZ_GR_OK.format(group_name=group_name), reply_markup=None)
 
 
 def __set_hour_fee(chat_id: int, hour_fee: int) -> str:
@@ -563,7 +586,7 @@ def set_hour_fee_inline_value(update: Update, context: CallbackContext) -> str:
     """
     chat_id = update.effective_chat.id
     # Message in chat for user prompts and inline keyboard
-    message_id = context.user_data[INLINE_MSG_KEY]
+    message_id = context.chat_data[INLINE_MSG_KEY]
 
     # Test if the value is integer; if not, notify user inline and delete invalid message
     try:
@@ -593,9 +616,9 @@ def finish_conversation(update: Update, context: CallbackContext) -> str:
     """
     chat_id = update.effective_chat.id
     # Message in chat for user prompts and inline keyboard
-    inline_msg_id = context.user_data.pop(INLINE_MSG_KEY)
+    inline_msg_id = context.chat_data.pop(INLINE_MSG_KEY)
     # Message in chat that invoked conversation
-    initial_msg_id = context.user_data.pop(INITIAL_MSG_KEY)
+    initial_msg_id = context.chat_data.pop(INITIAL_MSG_KEY)
     # Cleanup keyboard (otherwise it is should as reply for deleted message)
     context.bot.edit_message_reply_markup(chat_id=chat_id, message_id=inline_msg_id, reply_markup=None)
     context.bot.delete_message(update.effective_chat.id, inline_msg_id)
@@ -664,6 +687,8 @@ def start_bot() -> None:
 
     # Maintenance direct command handlers (not visible in help)
     updater.dispatcher.add_handler(CommandHandler(authz_group.__name__, authz_group))
+    updater.dispatcher.add_handler(CallbackQueryHandler(authz_group_inline,
+                                                        pattern=f"^{authz_group_inline.__name__}{CALLBACK_DELIMITER}"))
 
     # Generate help prompt and handlers from bot methods available for regular authorized groups
     registered_methods = (help, get_balance, add_balance, use_balance, set_hour_fee)

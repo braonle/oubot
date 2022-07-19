@@ -1,2 +1,2 @@
-peewee>=3.14.10
-python-telegram-bot>=13.12
+peewee==3.14.10
+python-telegram-bot==13.12
