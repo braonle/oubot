@@ -79,4 +79,35 @@ All commands are available directly, although using inline button keyboard is re
 * **/use_balance \<hours\> \<rent\>**: utilizes the resources, *hours* \* *hour_fee* + *rent*
 * **/set_hour_fee \<hour_fee\>**: sets the multiplier (1200 by default), available to chat admins only
 
-
+# Reverse proxy
+If there are several bots running on a single host, it might be worthwhile to run them on different ports behind reverse proxy.
+## NGINX configuration
+```shell
+$ cat /etc/nginx/sites-enabled/bot_proxy 
+server {
+	location /oubot/ {
+		proxy_pass https://localhost:8443/;
+		proxy_set_header Host $host;
+		proxy_set_header X-Real-IP $remote_addr;
+	}
+}
+```
+## Bot configuration
+By default, bot expects to be run exclusively on a host. Change the following lines in [tg_handlers.py](engine/tg/tg_handlers.py) from
+```python
+if global_params.POLLING_BASED:
+    updater.start_polling(poll_interval=global_params.POLL_INTERVAL)
+else:
+    updater.start_webhook(listen=global_params.LISTEN_IP, port=global_params.PORT, url_path=global_params.TOKEN,
+                      key=global_params.PRIVATE_KEY, cert=global_params.CERTIFICATE,
+                      webhook_url=f'https://{global_params.PUBLIC_IP}:{global_params.PORT}/{global_params.TOKEN}')
+```
+to
+```python
+if global_params.POLLING_BASED:
+    updater.start_polling(poll_interval=global_params.POLL_INTERVAL)
+else:
+    updater.start_webhook(listen=global_params.LISTEN_IP, port=global_params.PORT, url_path=global_params.TOKEN,
+                      key=global_params.PRIVATE_KEY, cert=global_params.CERTIFICATE,
+                      webhook_url=f'https://{global_params.PUBLIC_IP}/oubot/{global_params.TOKEN}')
+```
